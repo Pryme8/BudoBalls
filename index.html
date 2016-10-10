@@ -1,0 +1,416 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+<title>BudoBall</title>
+<style>
+  html, body {
+    overflow: hidden;
+    width: 100%;
+    height: 100%;
+    margin: 0;
+    padding: 0;
+  }
+
+  #game {
+    width: 100%;
+    height: 100%;
+    touch-action: none;
+  }
+</style>
+<script src="http://cdn.jsdelivr.net/babylonjs/2.4/babylon.min.js"></script>
+<script src="./cannon.js"></script>
+</head>
+<body>
+<canvas id='game'></canvas>
+<script>
+
+		budo = {
+		player: null,
+		enemeys: [],
+		level: 12,
+		speeds : {
+			player : {
+				maxSpeed : 1,
+				accel : 0.01,
+				},
+			enemey :{
+				maxSpeed: 1,
+				accel: 0.005,
+			},
+		},
+		stage : null,			
+	    meshCache : {},
+		matCache: {},
+		scene : null,
+		engine : null,
+		camera : null,
+		canvas: null,
+		controls : {
+			sensitivity : {x:0.1,y:0.01},
+			max_rotateSpeed : {x:5,y:1},
+			pitch_limits : {mn:0,mx:12},	
+			}
+		};
+
+      var canvas = document.querySelector("#game");
+	  budo.canvas = canvas;
+      var engine = new BABYLON.Engine(canvas, true);
+	  budo.engine = engine;
+      // -------------------------------------------------------------
+   
+      var createScene = function () {
+      
+         var scene = new BABYLON.Scene(engine);
+		 budo.scene = scene;
+         scene.clearColor = new BABYLON.Color3(0.1, 0.05, 0.05);
+		 
+		 
+	   
+		 
+		 
+         var light = new BABYLON.SpotLight("Spot", new BABYLON.Vector3(0, 24, 0), new BABYLON.Vector3(0, -1, 0), 0.8, 2, scene);
+		light.diffuse = new BABYLON.Color3(0.1, 0.1, 0.1);
+		light.specular = new BABYLON.Color3(0.9, 0.9, 0.9);
+		
+		 
+		 
+         var ball = BABYLON.Mesh.CreateSphere("budoBall", 16, 2, scene);
+		 budo.meshCache['ball'] = ball;		 
+		 ball.setEnabled(0);
+		 
+		 var stage = BABYLON.MeshBuilder.CreateCylinder("stage", {diameter: 20, height:1, tessellation: 64}, scene);
+		 stage.material = new BABYLON.StandardMaterial("stage", scene);
+		 stage.material.emissiveColor  = new BABYLON.Color3(0.1, 0.1, 0.1);
+		 stage.position.y = -0.5;
+		 budo.stage = stage;
+		 
+		 
+		 var player = ball.clone();
+		 player.setEnabled(1);
+		 player.material = new BABYLON.StandardMaterial("player", scene);
+		 player.material.emissiveColor  = new BABYLON.Color3(0.2, 0.4, .4);
+		 player.material.specularColor = new BABYLON.Color3(0.2, 0.5, .4);
+		 player.material.specularPower = 64;
+		 player.position.y = 1;
+		 player.position.z = 0;
+		 player.power = 0.5;
+		 budo.player = player;
+		 
+		 var cTarget = ball.clone();
+		 cTarget.position = player.position;
+		 cTarget.isVisible = false;
+		 budo.player.cTarget = cTarget;
+		 
+		budo.player.speeds = {
+				f:0,
+				s:0,
+				u:0,
+			};
+		
+		 
+		  var camera = new BABYLON.FollowCamera("FollowCam", new BABYLON.Vector3(0, 15, -45), scene);
+    	  camera.target = cTarget; // target any mesh or object with a "position" Vector3
+		  camera.radius = 8; // how far from the object to follow
+			camera.heightOffset = 5; // how high above the object to place the camera
+			camera.rotationOffset = 0; // the viewing angle
+			camera.cameraAcceleration = 0.075 // how fast to move
+			camera.maxCameraSpeed = 20 // speed limit
+	
+		camera.spinAccel = 0;
+		camera.pitchAccel = 0.1;
+		budo.camera;
+		 
+		 
+		
+		 
+		 
+		 var shadowGenerator = new BABYLON.ShadowGenerator(1024, light);
+		 shadowGenerator.useBlurVarianceShadowMap = true;
+		 shadowGenerator.getShadowMap().renderList.push(player);		 
+		 stage.receiveShadows = true;
+		 
+		 	var keys = {};
+			
+		document.onkeydown = function (e) {
+    		e = e || window.event;//Get event
+   			//console.log(e);
+			keys[e.keyCode] = true;
+			//console.log(JSON.stringify(keys));
+			};
+		document.onkeyup = function (e) {
+    		e = e || window.event;//Get event
+   			//console.log(e);
+			keys[e.keyCode] = false;
+			//console.log(JSON.stringify(keys));
+			};
+			
+			
+			
+			
+		var gravity = new BABYLON.Vector3(0, -9.6, 0);
+		var p = new BABYLON.CannonJSPlugin();
+		
+		scene.enablePhysics(gravity, p);
+		scene.collisionsEnabled = true;
+		scene.workerCollisions = true;
+		
+		scene.getPhysicsEngine().setTimeStep(1 / 120);
+		
+		budo.player.body = budo.player.setPhysicsState(BABYLON.PhysicsImpostor.SphereImpostor, { mass: 1.0, friction: 0.5, restitution: 0.4});
+			
+		budo.player.body.grounded = false;
+		budo.player.body.name = 'ball';
+		budo.player.body.parent = budo.player;
+		budo.player.refreshBoundingInfo();
+		
+		
+				
+				budo.player.body.collisionResponse = 0;
+				budo.player.body.addEventListener("collide", function(e){
+				if(e.body.name == "stage"){
+				budo.player.body.grounded = true;
+				budo.player.body.collisionResponse = 1;
+				}
+				if(e.body.name == 'ball'){
+						//console.log('PLAYER HIT!');
+						var speed = Math.abs(budo.player.body.velocity.x)+ Math.abs(budo.player.body.velocity.y)+ Math.abs(budo.player.body.velocity.z);
+						speed/=3;
+						var tSpeed = Math.abs(e.body.velocity.x)+ Math.abs(e.body.velocity.y)+ Math.abs(e.body.velocity.z);
+						tSpeed/=3;
+						if(speed>tSpeed){
+						//console.log(e.body);
+						var impact = e.body.parent.position.subtract(budo.player.position).scale(2);
+						var recoil = e.body.parent.position.subtract(budo.player.position).scale(-1);
+						budo.player.applyImpulse(recoil, budo.player.position);
+						e.body.parent.applyImpulse(impact, e.body.parent.position);
+						}
+				}
+				});
+			
+			
+		budo.stage.body = budo.stage.setPhysicsState(BABYLON.PhysicsImpostor.CylinderImpostor, { mass: 0.0, friction: 0.8, restitution: 0.25});
+		budo.stage.body.name = "stage";	
+		
+		
+		 function createEnemy(pos){
+			var enemy = ball.clone();
+				enemy.material = player.material.clone();
+			 	enemy.material.emissiveColor  = new BABYLON.Color3(0.3, 0.0, 0.1);
+				enemy.material.specularPower = 64;
+		 		enemy.position.y = 1;
+				enemy.position.x = pos.x;
+		 		enemy.position.z = pos.z;
+				enemy.power = Math.random();
+				
+				
+				enemy.body = enemy.setPhysicsState(BABYLON.PhysicsImpostor.SphereImpostor, { mass: 1.0, friction: 0.5, restitution: 0.4});
+			
+				enemy.body.grounded = false;
+				enemy.body.name = 'ball';
+				enemy.body.parent = enemy;
+				enemy.refreshBoundingInfo();
+		
+				enemy.aggro = Math.random()*0.5;
+				
+				enemy.body.collisionResponse = 0;
+				enemy.body.addEventListener("collide", function(e){
+				if(e.body.name == "stage"){
+				enemy.body.grounded = true;
+				enemy.body.collisionResponse = 1;
+				}
+					if(e.body.name == 'ball'){
+						//console.log('ENEMEY HIT!');
+						var speed = Math.abs(enemy.body.velocity.x)+ Math.abs(enemy.body.velocity.y)+ Math.abs(enemy.body.velocity.z);
+						speed/=3;
+						var tSpeed = Math.abs(e.body.velocity.x)+ Math.abs(e.body.velocity.y)+ Math.abs(e.body.velocity.z);
+						tSpeed/=3;
+						if(speed>tSpeed){
+						var impact = budo.player.position.subtract(enemy.position).scale(enemy.aggro*2);
+						var recoil = budo.player.position.subtract(enemy.position).scale(enemy.aggro*-1);
+						enemy.applyImpulse(recoil, enemy.position);
+						e.body.applyImpulse(impact, e.body.position);
+						}
+					}
+				});
+				budo.enemeys.push(enemy);
+				shadowGenerator.getShadowMap().renderList.push(enemy);	
+		 };
+		 
+		 
+		 function startLevel(){
+			var pieDiv = 2/(budo.level+1);
+			var divArray = [];
+			for(var i = 0; i < (budo.level+1); i++){
+				divArray.push(Math.PI*(pieDiv*i));
+			}
+			for(var i =0; i<(budo.level+1); i++){				
+				var newPos = new BABYLON.Vector3((8 * Math.cos(divArray[i])), (1), (8 * Math.sin(divArray[i])));
+				createEnemy(newPos);
+				
+			}
+		 };
+		
+		
+		
+		var lensEffect = new BABYLON.LensRenderingPipeline('lens', {
+		edge_blur: 0.2,
+		//chromatic_aberration: 0.65,
+		//distortion: 0.75,
+		dof_focus_distance: 9.0,
+		dof_aperture: 0.15,	
+		//grain_amount: 0.85,
+		//dof_pentagon: true,
+		//dof_gain: 0.6,
+		//dof_threshold: 0.65,
+		//dof_darken: 0.35,
+		}, scene, 1.0, camera);
+		
+		
+			startLevel();
+			
+			scene.registerBeforeRender(function(){	
+			
+						budo.player.cTarget.position = budo.player.position;
+						
+				if(keys['37']){
+					if(camera.spinAccel < budo.controls.max_rotateSpeed.x){
+						camera.spinAccel += budo.controls.sensitivity.x;
+					}else{
+						camera.spinAccel = budo.controls.max_rotateSpeed.x;
+					}
+						camera.rotationOffset -= camera.spinAccel;	
+				}else if(keys['39']){
+					if(camera.spinAccel < budo.controls.max_rotateSpeed.x){
+						camera.spinAccel += budo.controls.sensitivity.x;
+					}else{
+						camera.spinAccel = budo.controls.max_rotateSpeed.x;
+					}
+			
+					camera.rotationOffset += camera.spinAccel;			
+				}
+			
+			if(!keys['37'] && !keys['39']){camera.spinAccel = 1};
+			
+			if(keys['40']){
+				if(camera.pitchAccel < budo.controls.max_rotateSpeed.y){
+					camera.pitchAccel += budo.controls.sensitivity.y;
+				}else{
+					camera.pitchAccel = budo.controls.max_rotateSpeed.y;
+				}
+				if(camera.heightOffset < budo.controls.pitch_limits.mx){
+					camera.heightOffset += camera.pitchAccel;	
+				}else{
+					camera.heightOffset = budo.controls.pitch_limits.mx;
+				}
+			}else if(keys['38']){
+				if(camera.pitchAccel < budo.controls.max_rotateSpeed.y){
+					camera.pitchAccel += budo.controls.sensitivity.y;
+				}else{
+					camera.pitchAccel = budo.controls.max_rotateSpeed.y;
+				}
+			
+				if(camera.heightOffset > budo.controls.pitch_limits.mn){
+					camera.heightOffset -= camera.pitchAccel;	
+				}else{
+					camera.heightOffset = budo.controls.pitch_limits.mn;
+				}		
+			}
+			
+			if(!keys['38'] && !keys['40']){camera.pitchAccel = 0.1};
+		
+			if(budo.player.body.grounded){
+				var forward = camera.getTarget().subtract(budo.player.position).normalize();
+				forward.y = 0;
+				var right = BABYLON.Vector3.Cross(forward, camera.upVector).normalize();
+				right.y = 0;	
+				
+				//console.log(forward);
+				if(keys['83']){
+					if(budo.player.speeds.f < 8){
+					budo.player.speeds.f += 0.5;
+					}else{
+					budo.player.speeds.f = 8;
+				}
+								
+				}else if(keys['87']){
+					if(budo.player.speeds.f > -8){
+					budo.player.speeds.f -= 0.5;
+					}else{
+					budo.player.speeds.f = -8;
+					}	
+				}
+				
+				if(keys['68']){
+				if(budo.player.speeds.s > -8){
+					budo.player.speeds.s -= 0.5;
+				}else{
+				budo.player.speeds.s = -8;
+				}
+				}
+			
+				if(keys['65']){
+				if(budo.player.speeds.s < 8){
+					budo.player.speeds.s += 0.5;
+				}else{
+				budo.player.speeds.s = 8;
+				}
+				}
+				
+				budo.player.speeds.f*=0.70;
+				budo.player.speeds.s*=0.70;
+				
+				if(budo.player.speeds.f<0.05 && budo.player.speeds.f > -0.05){
+					budo.player.speeds.f = 0;
+				}
+				if(budo.player.speeds.s<0.05 && budo.player.speeds.s > -0.05){
+					budo.player.speeds.s = 0;
+				}
+				
+				
+				
+				
+				var move = (forward.scale(budo.player.speeds.f)).subtract((right.scale(budo.player.speeds.s)));
+				//console.log(move);
+		
+						budo.player.applyImpulse(move.scale(0.5), budo.player.position);
+			
+				
+				budo.player.body.velocity.x*=0.94;
+				budo.player.body.velocity.z*=0.94;
+				
+			};//END GROUNDED
+			
+			for(var i = 0; i<budo.enemeys.length; i++){
+				var en = budo.enemeys[i];
+				var tword = budo.player.position.subtract(en.position).normalize().scale(en.aggro);
+				if(en.body.grounded){
+					en.applyImpulse(tword.scale(0.4), en.position);
+				}
+			};
+			
+			
+			});
+			
+			
+			
+			
+			
+			//87 w; 83 s; 65 a; 68 d;
+			
+		return scene;
+
+      }; // End of createScene function
+      // -------------------------------------------------------------
+      var scene = createScene();
+      engine.runRenderLoop(function () {
+         scene.render();
+      });
+      window.addEventListener("resize", function () {
+         engine.resize();
+      });
+
+
+</script>
+</body>
+</html>
